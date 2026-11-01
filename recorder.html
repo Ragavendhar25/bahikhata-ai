@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BahiKhata.AI Voice Entry</title>
+<style>
+  :root {
+    --paper: #f5f8fc;
+    --line: #cfdcec;
+    --ink: #1f3a8a;
+    --text: #1b2433;
+    --muted: #5b6b82;
+    --rec: #c62828;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --paper: #12182a; --line: #26324f; --ink: #9db8ff; --text: #e8edf7; --muted: #93a1bd; --rec: #ff6b6b; }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; display: flex; justify-content: center;
+    background: var(--paper); color: var(--text);
+    font-family: "Segoe UI", system-ui, sans-serif;
+    background-image: repeating-linear-gradient(to bottom, transparent 0, transparent 31px, var(--line) 31px, var(--line) 32px);
+  }
+  main { width: 100%; max-width: 440px; padding: 32px 20px; }
+  h1 { font-size: 1.5rem; margin: 0 0 4px; color: var(--ink); }
+  p.sub { margin: 0 0 24px; color: var(--muted); }
+  .row { display: flex; gap: 12px; margin-bottom: 20px; }
+  label { display: flex; flex-direction: column; font-size: .85rem; color: var(--muted); flex: 1; gap: 4px; }
+  input, select {
+    font: inherit; padding: 10px; border: 1px solid var(--line); border-radius: 8px;
+    background: var(--paper); color: var(--text);
+  }
+  #rec {
+    display: block; margin: 28px auto 8px; width: 112px; height: 112px; border-radius: 50%;
+    border: 4px solid var(--ink); background: var(--paper); color: var(--ink);
+    font: inherit; font-weight: 600; cursor: pointer;
+  }
+  #rec:focus-visible { outline: 3px solid var(--ink); outline-offset: 4px; }
+  #rec.on { background: var(--rec); border-color: var(--rec); color: #fff; animation: pulse 1.2s infinite; }
+  @keyframes pulse { 50% { box-shadow: 0 0 0 14px rgba(198,40,40,.18); } }
+  @media (prefers-reduced-motion: reduce) { #rec.on { animation: none; } }
+  #status { text-align: center; color: var(--muted); min-height: 1.5em; margin-bottom: 16px; }
+  #out { background: var(--paper); border: 1px solid var(--line); border-radius: 8px; padding: 14px; display: none; }
+  #out dt { color: var(--muted); font-size: .8rem; margin-top: 10px; }
+  #out dt:first-child { margin-top: 0; }
+  #out dd { margin: 2px 0 0; font-size: 1.05rem; word-break: break-word; }
+  #err { color: var(--rec); text-align: center; }
+</style>
+</head>
+<body>
+<main>
+  <h1>BahiKhata.AI</h1>
+  <p class="sub">Press the button, say the item, press again.</p>
+
+  <div class="row">
+    <label>Customer ID
+      <input id="cid" type="number" value="1" min="1">
+    </label>
+    <label>Language
+      <select id="lang">
+        <option value="">Auto detect</option>
+        <option value="ta">Tamil</option>
+        <option value="hi">Hindi</option>
+        <option value="en">English</option>
+      </select>
+    </label>
+  </div>
+
+  <button id="rec" type="button">Record</button>
+  <div id="status" aria-live="polite">Ready</div>
+  <div id="err"></div>
+
+  <dl id="out">
+    <dt>Heard</dt><dd id="heard"></dd>
+    <dt>Item</dt><dd id="item"></dd>
+    <dt>Quantity</dt><dd id="qty"></dd>
+    <dt>Price per unit</dt><dd id="price"></dd>
+    <dt>Total</dt><dd id="total"></dd>
+  </dl>
+</main>
+
+<script>
+const btn = document.getElementById("rec");
+const status = document.getElementById("status");
+const err = document.getElementById("err");
+const out = document.getElementById("out");
+let recorder, chunks = [], recording = false;
+
+btn.addEventListener("click", async () => {
+  err.textContent = "";
+  if (!recording) {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      recorder = new MediaRecorder(stream);
+      chunks = [];
+      recorder.ondataavailable = e => chunks.push(e.data);
+      recorder.onstop = () => { stream.getTracks().forEach(t => t.stop()); send(); };
+      recorder.start();
+      recording = true;
+      btn.classList.add("on");
+      btn.textContent = "Stop";
+      status.textContent = "Listening...";
+    } catch (e) {
+      err.textContent = "Microphone blocked. Allow it in the browser address bar.";
+    }
+  } else {
+    recorder.stop();
+    recording = false;
+    btn.classList.remove("on");
+    btn.textContent = "Record";
+    status.textContent = "Understanding...";
+  }
+});
+
+async function send() {
+  const blob = new Blob(chunks, { type: recorder.mimeType || "audio/webm" });
+  const form = new FormData();
+  form.append("customer_id", document.getElementById("cid").value);
+  form.append("language", document.getElementById("lang").value);
+  form.append("audio", blob, "voice.webm");
+  try {
+    const res = await fetch("/voice-entry", { method: "POST", body: form });
+    if (!res.ok) throw new Error("Server error " + res.status + ". Check the terminal.");
+    const d = await res.json();
+    document.getElementById("heard").textContent = d.heard;
+    document.getElementById("item").textContent = d.parsed.item;
+    document.getElementById("qty").textContent = d.parsed.quantity;
+    document.getElementById("price").textContent = d.parsed.price;
+    document.getElementById("total").textContent = d.total;
+    out.style.display = "block";
+    status.textContent = "Saved to ledger";
+  } catch (e) {
+    status.textContent = "";
+    err.textContent = e.message;
+  }
+}
+</script>
+</body>
+</html>
