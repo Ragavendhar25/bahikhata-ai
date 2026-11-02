@@ -1,6 +1,6 @@
 # BahiKhata.AI
 
-![Tests](https://github.com/YOUR_USERNAME/bahikhata-ai/actions/workflows/main.yml/badge.svg)
+![Tests](https://github.com/Ragavendhar25/bahikhata-ai/actions/workflows/main.yml/badge.svg)
 
 Voice-based digital ledger for small neighbourhood shops.
 The shopkeeper speaks in Tamil, Hindi or English, and the app writes the entry in the ledger.
