@@ -7,6 +7,8 @@ from fastapi import UploadFile, File, Form
 from ai_parser import parse_entry, transcribe
 from fastapi.responses import FileResponse
 from corrector import correct_item
+from urllib.parse import quote
+from fastapi import HTTPException
 
 Base.metadata.create_all(bind=engine)
 app = FastAPI()
@@ -109,3 +111,25 @@ async def voice_entry(customer_id: int = Form(...),
 @app.get("/recorder")
 def recorder():
     return FileResponse("recorder.html")
+
+
+@app.get("/customers/{customer_id}/bill")
+def bill(customer_id: int, db: Session = Depends(get_db)):
+    c = db.query(Customer).filter(Customer.id == customer_id).first()
+    if not c:
+        raise HTTPException(status_code=404, detail="Customer not found")
+
+    entries = db.query(LedgerEntry).filter(LedgerEntry.customer_id == customer_id).all()
+    bought = sum(e.total for e in entries if e.entry_type == "purchase")
+    paid = sum(e.total for e in entries if e.entry_type == "payment")
+    due = bought - paid
+
+    recent = [e for e in entries if e.entry_type == "purchase"][-5:]
+    lines = [f"- {e.item} {e.quantity:g} x {e.price:g} = {e.total:g}" for e in recent]
+
+    message = (f"Hello {c.name},\nYour recent items:\n" + "\n".join(lines) +
+               f"\nTotal bought: {bought:g}\nPaid: {paid:g}\nBalance due: {due:g}\nThank you!")
+
+    phone = "".join(ch for ch in (c.phone or "") if ch.isdigit())
+    link = f"https://wa.me/91{phone}?text={quote(message)}"
+    return {"message": message, "whatsapp_link": link}
